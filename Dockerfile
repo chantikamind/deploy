@@ -1,19 +1,12 @@
 FROM python:3.11-slim
 
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-       libglx-mesa0 \
-       libgl1-mesa-dri \
-       libglib2.0-0 \
-       libsm6 \
-       libxext6 \
-       ffmpeg \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY . /app
 WORKDIR /app
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
 
-CMD ["python", "app.py"]
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:$PORT"]
