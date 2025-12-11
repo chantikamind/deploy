@@ -1,2 +1,9 @@
-[phases.setup]
-aptPkgs = ["libgl1-mesa-glx", "libglib2.0-0"]
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "gunicorn api.index:app"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 10
