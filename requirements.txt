@@ -1,7 +1,8 @@
 Flask==2.3.0
 Flask-CORS==4.0.0
-opencv-python==4.8.0.74
+opencv-python-headless
 mediapipe==0.10.10
 numpy==1.26.4
 Pillow==10.2.0
 onnxruntime==1.17.0
+
