@@ -6,11 +6,11 @@
 
   <!-- External CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
 </head>
-<body>
 
+<body>
 <div class="wrap">
+
   <header>
     <h1>Hand Gesture Recognition</h1>
     <p>Realtime detection — simple controls below.</p>
@@ -22,9 +22,15 @@
 
   <div class="info">
     <div class="left">
-      <div class="badge">Gesture: <span id="gesture-name">-</span></div>
-      <div class="badge">Confidence: <span id="confidence">0%</span></div>
-      <div class="badge">Saved: <span id="saved-count">0</span></div>
+      <div class="badge">
+        Gesture: <span id="gesture-name">-</span>
+      </div>
+      <div class="badge">
+        Confidence: <span id="confidence">0%</span>
+      </div>
+      <div class="badge">
+        Saved: <span id="saved-count">0</span>
+      </div>
     </div>
 
     <div class="controls">
@@ -38,6 +44,7 @@
     <span id="status">System ready.</span>
     • <a class="link" href="{{ url_for('video_feed') }}" target="_blank">Open stream</a>
   </footer>
+
 </div>
 
 <!-- External JS -->
