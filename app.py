@@ -20,7 +20,7 @@ import base64
 # Vercel environment setup
 VERCEL_ENV = os.getenv('VERCEL_ENV', 'development')
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
 
 # ========== CONFIGURATION ==========
@@ -526,3 +526,4 @@ def health_check():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+
