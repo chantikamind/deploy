@@ -1,4 +1,60 @@
+
 let lastSavedFeatures = null;
+
+
+const videoElement = document.createElement("video");
+videoElement.autoplay = true;
+videoElement.playsInline = true;
+
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
+
+const imgTag = document.getElementById("video-stream");
+
+async function startWebcam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 }
+    });
+
+    videoElement.srcObject = stream;
+    videoElement.onloadedmetadata = () => {
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      sendFramesLoop();
+    };
+
+  } catch (err) {
+    console.error("Webcam error:", err);
+    alert("Tidak bisa mengakses webcam.");
+  }
+}
+
+async function sendFramesLoop() {
+  try {
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    let frameData = canvas.toDataURL("image/jpeg", 0.8);
+
+    const resp = await fetch("/api/process_frame", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frame: frameData })
+    });
+
+    const data = await resp.json();
+
+    if (data.image) {
+      imgTag.src = "data:image/jpeg;base64," + data.image;
+    }
+
+  } catch (err) {
+    console.error("Frame send error:", err);
+  }
+
+  requestAnimationFrame(sendFramesLoop);
+}
+
+startWebcam();
 
 
 async function onSave() {
@@ -95,5 +151,6 @@ function downloadExcel() {
 }
 
 
+// refresh gesture info
 setInterval(updateGestureInfo, 600);
 updateGestureInfo();
