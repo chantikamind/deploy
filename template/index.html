@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hand Gesture Recognition - Real-Time</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 2.5em;
+    }
+    
+    .header p {
+      margin: 10px 0 0 0;
+      opacity: 0.9;
+    }
+    
+    .content {
+      padding: 30px;
+    }
+    
+    .video-container {
+      position: relative;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      width: 100%;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .video-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .stat-box {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    
+    .stat-box .label {
+      font-size: 0.9em;
+      opacity: 0.9;
+      margin-bottom: 8px;
+    }
+    
+    .stat-box .value {
+      font-size: 1.8em;
+      font-weight: bold;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    button {
+      padding: 12px 24px;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: 600;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+    
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    .status {
+      text-align: center;
+      margin-top: 20px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    
+    @media (max-width: 600px) {
+      .stats {
+        grid-template-columns: 1fr;
+      }
+      
+      .header h1 {
+        font-size: 1.8em;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1> Hand Gesture Recognition</h1>
+    <p>Real-Time Detection with Roboflow & Fuzzy ART</p>
+  </div>
+  
+  <div class="content">
+    <div class="video-container">
+      <img id="video-stream" src="/video_feed" alt="Live Camera Feed">
+    </div>
+    
+    <div class="stats">
+      <div class="stat-box">
+        <div class="label">Current Gesture</div>
+        <div class="value" id="gesture-name">-</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Confidence</div>
+        <div class="value" id="confidence">0%</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Trained Categories</div>
+        <div class="value" id="categories">0</div>
+      </div>
+    </div>
+    
+    <div class="controls">
+      <button class="btn-primary" onclick="saveModel()">💾 Save Model</button>
+      <button class="btn-secondary" onclick="refreshStream()">🔄 Refresh</button>
+    </div>
+    
+    <div class="status" id="status">
+      ✅ System Ready - Detecting gestures...
+    </div>
+  </div>
+</div>
+
+<script>
+  // Update gesture information from API
+  async function updateGestureInfo() {
+    try {
+      const response = await fetch('/api/gesture');
+      const data = await response.json();
+      
+      document.getElementById('gesture-name').textContent = data.gesture;
+      document.getElementById('confidence').textContent = (data.confidence * 100).toFixed(1) + '%';
+      document.getElementById('categories').textContent = data.categories;
+    } catch (error) {
+      console.error('Error updating gesture info:', error);
+    }
+  }
+  
+  // Save model to CSV
+  async function saveModel() {
+    try {
+      const response = await fetch('/api/save_model', { method: 'POST' });
+      const data = await response.json();
+      
+      const status = document.getElementById('status');
+      status.innerHTML = '✅ Model saved successfully!';
+      status.style.borderLeftColor = '#4caf50';
+      
+      setTimeout(() => {
+        status.innerHTML = '✅ System Ready - Detecting gestures...';
+        status.style.borderLeftColor = '#667eea';
+      }, 3000);
+    } catch (error) {
+      document.getElementById('status').innerHTML = '❌ Failed to save model';
+      console.error('Error saving model:', error);
+    }
+  }
+  
+  // Refresh video stream
+  function refreshStream() {
+    const img = document.getElementById('video-stream');
+    img.src = '/video_feed?' + new Date().getTime();
+  }
+  
+  // Update gesture info every 500ms
+  setInterval(updateGestureInfo, 500);
+  
+  // Initial update
+  updateGestureInfo();
+</script>
+
+</body>
+</html>
