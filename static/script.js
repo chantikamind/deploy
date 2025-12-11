@@ -1,69 +1,76 @@
-import { FuzzyART } from "./fuzzyart.js";
+let lastSavedFeatures = null;
 
-const video = document.getElementById("video");
-const gestureText = document.getElementById("gesture");
-const artText = document.getElementById("art-gesture");
+async function onSave() {
+  const name = window.prompt("Enter gesture name to save:");
+  if (!name) return;
 
-// ========== LOAD TFJS MODEL ==========
-let model;
-(async () => {
-  model = await tf.loadLayersModel("model/model.json");
-  console.log("ML model loaded!");
-})();
+  try {
+    const resp = await fetch("/api/gesture");
+    const data = await resp.json();
 
-// ========== INIT ART ==========
-const art = new FuzzyART();
+    if (!data.features) {
+      alert("No hand detected. Please show your hand.");
+      return;
+    }
 
-// ========== INIT MEDIAPIPE ==========
-const hands = new Hands({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-});
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5,
-});
+    const saveResp = await fetch("/api/save_gesture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gesture_name: name, features: data.features })
+    });
 
-navigator.mediaDevices.getUserMedia({ video: true })
-  .then(stream => video.srcObject = stream);
+    const result = await saveResp.json();
+    const status = document.getElementById("status");
 
-async function processFrame() {
-  await hands.send({ image: video });
-  requestAnimationFrame(processFrame);
+    if (saveResp.ok) {
+      status.textContent = `Saved "${name}"`;
+      updateGestureInfo();
+    } else {
+      status.textContent = `Save failed: ${result.message}`;
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Error saving gesture.");
+  }
 }
 
-video.onloadeddata = () => processFrame();
+async function updateGestureInfo() {
+  try {
+    const resp = await fetch("/api/gesture");
+    const data = await resp.json();
 
-// ========== CALLBACK ==========
-hands.onResults(async results => {
-  if (!results.multiHandLandmarks) {
-    gestureText.textContent = "-";
-    artText.textContent = "-";
-    return;
+    document.getElementById("gesture-name").textContent = data.gesture || "-";
+    document.getElementById("confidence").textContent =
+      data.confidence ? (data.confidence * 100).toFixed(1) + "%" : "-";
+    document.getElementById("saved-count").textContent =
+      data.saved_gestures ?? 0;
+
+    lastSavedFeatures = data.features || null;
+  } catch (err) {
+    console.error("update error", err);
   }
+}
 
-  const lm = results.multiHandLandmarks[0];
+async function toggleAutoSave() {
+  try {
+    const resp = await fetch("/api/auto_save/toggle", { method: "POST" });
+    const data = await resp.json();
 
-  // ====== Format Landmark ======
-  let input = [];
-  for (let i = 0; i < lm.length; i++) {
-    input.push(lm[i].x);
-    input.push(lm[i].y);
-    input.push(lm[i].z);
+    const btn = document.getElementById("auto-save-btn");
+    btn.textContent = data.auto_save_enabled ? "Auto-save: ON" : "Auto-save: OFF";
+    btn.style.background = data.auto_save_enabled ? "#16a34a" : "#6b7280";
+
+    document.getElementById("status").textContent = data.message;
+  } catch (err) {
+    console.error(err);
+    alert("Failed to toggle auto-save.");
   }
+}
 
-  const tensor = tf.tensor([input]);
+function downloadExcel() {
+  window.location.href = "/api/download/excel";
+  document.getElementById("status").textContent = "Downloading Excel...";
+}
 
-  // ====== ML Prediction ======
-  if (model) {
-    const pred = model.predict(tensor);
-    const idx = pred.argMax(1).dataSync()[0];
-
-    gestureText.textContent = `ML Model: ${idx}`;
-  }
-
-  // ====== ART Prediction ======
-  const artClass = art.predict(input);
-  artText.textContent = `ART Class: ${artClass}`;
-});
+setInterval(updateGestureInfo, 600);
+updateGestureInfo();
