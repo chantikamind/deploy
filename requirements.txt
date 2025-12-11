@@ -7,4 +7,5 @@ Pillow==10.2.0
 onnxruntime==1.17.0
 inference-sdk
 openpyxl
+gunicorn==21.2.0
 
