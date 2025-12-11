@@ -1,7 +1,7 @@
 Flask==2.3.0
 Flask-CORS==4.0.0
 numpy==1.24.3
-opencv-python-headless==4.8.1.78
+opencv-python-headless
 mediapipe==0.10.9
 onnxruntime==1.17.0
 inference-sdk==0.61.0
@@ -11,3 +11,4 @@ dataclasses-json
 packaging
 sympy
 gunicorn==21.2.0
+
