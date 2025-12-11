@@ -1,9 +1,11 @@
-[build]
-builder = "nixpacks"
+[phases.setup]
+aptPkgs = ["libgl1", "libglib2.0-0", "libsm6", "libxext6", "libxrender-dev", "libgomp1", "libglib2.0-0"]
 
-[deploy]
-startCommand = "gunicorn api.index:app"
-healthcheckPath = "/"
-healthcheckTimeout = 100
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 10
+[phases.install]
+cmds = ["pip install --upgrade pip"]
+
+[phases.build]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"
