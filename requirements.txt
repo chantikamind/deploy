@@ -1,6 +1,6 @@
 Flask==2.3.0
 Flask-CORS==4.0.0
-opencv-python==4.8.0.74
+opencv-python-headless
 mediapipe==0.10.15
 numpy==1.24.3
 roboflow==1.1.27
@@ -9,3 +9,4 @@ Werkzeug==2.3.0
 openpyxl==3.1.5
 python-dotenv==1.0.0
 gunicorn==21.2.0
+
