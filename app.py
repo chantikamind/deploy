@@ -1,7 +1,10 @@
+import os
+os.environ['OPENCV_VIDEOIO_DEBUG'] = '0'
+os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import os
 import csv
 import json
 import time
@@ -12,12 +15,12 @@ import threading
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from datetime import datetime
-import sys
+import base64
 
 # Vercel environment setup
 VERCEL_ENV = os.getenv('VERCEL_ENV', 'development')
 
-app = Flask(__name__, template_folder='../templates')
+app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # ========== CONFIGURATION ==========
@@ -194,13 +197,7 @@ mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
 
-cap = None
-try:
-    cap = cv2.VideoCapture(0)
-except:
-    cap = None
-
-current_gesture = "Mencari Tangan..."
+current_gesture = "Menunggu gambar dari browser..."
 current_confidence = 0.0
 current_features = None
 auto_save_unknown = False
@@ -208,115 +205,139 @@ unknown_gesture_counter = 0
 last_saved_gesture = None
 lock = threading.Lock()
 
-# ========== VIDEO STREAM ==========
-def generate_frames():
-    global current_gesture, current_confidence, current_features, art, gesture_names
+# ========== PROCESS FRAME FROM BROWSER ==========
+def process_frame_data(frame_data):
+    """Process frame yang dikirim dari browser"""
+    global current_gesture, current_confidence, current_features
     global auto_save_unknown, unknown_gesture_counter, last_saved_gesture
     
-    if cap is None:
-        yield (b'--frame\r\n'
-               b'Content-Type: text/plain\r\n\r\n' + 
-               b'Camera not available\r\n')
-        return
-    
-    while True:
+    try:
+        # Decode base64 image
+        img_data = base64.b64decode(frame_data.split(',')[1])
+        nparr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return None
+        
+        display_frame = frame.copy()
+        
+        status = "Mencari Tangan..."
+        color = (255, 255, 0)
+        vec = None
+        cropped_frame = None
+        confidence = 0.0
+
+        # ROBOFLOW DETECTION
         try:
-            success, frame = cap.read()
-            if not success:
-                break
+            predictions = yolo_client.infer(display_frame, model_id=ROBOFLOW_MODEL_ID, confidence=0.5)
             
-            frame = cv2.flip(frame, 1)
-            display_frame = frame.copy()
-            
-            status = "Mencari Tangan..."
-            color = (255, 255, 0)
-            vec = None
-            cropped_frame = None
-            confidence = 0.0
-
-            # ROBOFLOW DETECTION
-            try:
-                predictions = yolo_client.infer(display_frame, model_id=ROBOFLOW_MODEL_ID, confidence=0.5)
-                
-                if predictions and 'predictions' in predictions:
-                    hand_predictions = [p for p in predictions['predictions'] if p['class'].lower() == 'hand']
-                    if hand_predictions:
-                        best_pred = max(hand_predictions, key=lambda x: x['confidence'])
-                        x_min, y_min, x_max, y_max = int(best_pred['x_min']), int(best_pred['y_min']), int(best_pred['x_max']), int(best_pred['y_max'])
-                        
-                        pad = 30 
-                        H, W, _ = frame.shape
-                        x_min = max(0, x_min - pad)
-                        y_min = max(0, y_min - pad)
-                        x_max = min(W, x_max + pad)
-                        y_max = min(H, y_max + pad)
-                        
-                        cv2.rectangle(display_frame, (x_min, y_min), (x_max, y_max), (255, 0, 0), 2)
-                        cropped_frame = frame[y_min:y_max, x_min:x_max]
-                        confidence = best_pred.get('confidence', 0.0)
-            except:
-                pass
-            
-            # MEDIAPIPE PROCESSING
-            frame_to_process = cropped_frame if cropped_frame is not None and cropped_frame.size > 0 else frame
-            rgb_frame = cv2.cvtColor(frame_to_process, cv2.COLOR_BGR2RGB)
-            results = hands.process(rgb_frame)
-
-            if results.multi_hand_landmarks:
-                mp_draw.draw_landmarks(display_frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
-                vec = extract_features(results)
-                
-                if vec is not None:
-                    idx = art.classify(vec)     
+            if predictions and 'predictions' in predictions:
+                hand_predictions = [p for p in predictions['predictions'] if p['class'].lower() == 'hand']
+                if hand_predictions:
+                    best_pred = max(hand_predictions, key=lambda x: x['confidence'])
+                    x_min, y_min, x_max, y_max = int(best_pred['x_min']), int(best_pred['y_min']), int(best_pred['x_max']), int(best_pred['y_max'])
                     
-                    if idx >= 0:
-                        name = gesture_names.get(idx, f"Unknown ({idx})")
-                        status = f"Gesture: {name}"
-                        color = (0, 255, 0)
-                        confidence = 0.95
-                    elif idx == -2:
-                        status = "Tidak Dikenal"
-                        color = (0, 0, 255)
-                        confidence = 0.5
-                        
-                        if auto_save_unknown and last_saved_gesture != vec.tobytes():
-                            try:
-                                with lock:
-                                    gesture_name = f"unknown_{unknown_gesture_counter}"
-                                    filename, gesture_id = save_gesture_sample(gesture_name, vec)
-                                    unknown_gesture_counter += 1
-                                last_saved_gesture = vec.tobytes()
-                                status = f"Auto-saved: {gesture_name}"
-                                color = (0, 165, 255)
-                            except Exception as e:
-                                print(f"[ERROR] Auto-save failed: {e}")
-
-            with lock:
-                current_gesture = status
-                current_confidence = confidence
-                current_features = vec.tolist() if vec is not None else None
-
-            # UI
-            cv2.rectangle(display_frame, (0, 0), (640, 90), (0, 0, 0), -1)
-            cv2.putText(display_frame, status, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            cv2.putText(display_frame, f"Confidence: {confidence:.2f} | Categories: {len(art.weights)}", (20, 75), cv2.FONT_ITALIC, 0.5, (200, 200, 200), 1)
-            
-            ret, buffer = cv2.imencode('.jpg', display_frame)
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                    pad = 30 
+                    H, W, _ = frame.shape
+                    x_min = max(0, x_min - pad)
+                    y_min = max(0, y_min - pad)
+                    x_max = min(W, x_max + pad)
+                    y_max = min(H, y_max + pad)
+                    
+                    cv2.rectangle(display_frame, (x_min, y_min), (x_max, y_max), (255, 0, 0), 2)
+                    cropped_frame = frame[y_min:y_max, x_min:x_max]
+                    confidence = best_pred.get('confidence', 0.0)
         except Exception as e:
-            print(f"[ERROR] Frame generation failed: {e}")
-            break
+            print(f"[ERROR] YOLO detection: {e}")
+        
+        # MEDIAPIPE PROCESSING
+        frame_to_process = cropped_frame if cropped_frame is not None and cropped_frame.size > 0 else frame
+        rgb_frame = cv2.cvtColor(frame_to_process, cv2.COLOR_BGR2RGB)
+        results = hands.process(rgb_frame)
+
+        if results.multi_hand_landmarks:
+            mp_draw.draw_landmarks(display_frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
+            vec = extract_features(results)
+            
+            if vec is not None:
+                idx = art.classify(vec)     
+                
+                if idx >= 0:
+                    name = gesture_names.get(idx, f"Unknown ({idx})")
+                    status = f"Gesture: {name}"
+                    color = (0, 255, 0)
+                    confidence = 0.95
+                elif idx == -2:
+                    status = "Tidak Dikenal"
+                    color = (0, 0, 255)
+                    confidence = 0.5
+                    
+                    if auto_save_unknown and last_saved_gesture != vec.tobytes():
+                        try:
+                            with lock:
+                                gesture_name = f"unknown_{unknown_gesture_counter}"
+                                filename, gesture_id = save_gesture_sample(gesture_name, vec)
+                                unknown_gesture_counter += 1
+                            last_saved_gesture = vec.tobytes()
+                            status = f"Auto-saved: {gesture_name}"
+                            color = (0, 165, 255)
+                        except Exception as e:
+                            print(f"[ERROR] Auto-save failed: {e}")
+
+        with lock:
+            current_gesture = status
+            current_confidence = confidence
+            current_features = vec.tolist() if vec is not None else None
+
+        # UI
+        cv2.rectangle(display_frame, (0, 0), (640, 90), (0, 0, 0), -1)
+        cv2.putText(display_frame, status, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv2.putText(display_frame, f"Confidence: {confidence:.2f} | Categories: {len(art.weights)}", 
+                    (20, 75), cv2.FONT_ITALIC, 0.5, (200, 200, 200), 1)
+        
+        # Encode ke base64
+        _, buffer = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return img_base64
+        
+    except Exception as e:
+        print(f"[ERROR] Frame processing failed: {e}")
+        return None
 
 # ========== ROUTES ==========
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/api/process_frame', methods=['POST'])
+def process_frame_endpoint():
+    """Process frame dari browser webcam"""
+    try:
+        data = request.json
+        frame_data = data.get('frame')
+        
+        if not frame_data:
+            return jsonify({'status': 'error', 'message': 'No frame data'}), 400
+        
+        processed_image = process_frame_data(frame_data)
+        
+        if processed_image:
+            with lock:
+                return jsonify({
+                    'status': 'success',
+                    'image': processed_image,
+                    'gesture': current_gesture,
+                    'confidence': current_confidence,
+                    'features': current_features,
+                    'categories': len(art.weights)
+                })
+        else:
+            return jsonify({'status': 'error', 'message': 'Frame processing failed'}), 500
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 def get_saved_gestures_count():
     """Hitung jumlah gesture yang tersimpan di folder gesture_data"""
@@ -501,3 +522,7 @@ def health_check():
         'environment': VERCEL_ENV,
         'models': len(art.weights)
     })
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
